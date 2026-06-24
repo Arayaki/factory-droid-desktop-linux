@@ -15,14 +15,16 @@ RUN dnf install -y \
 
 RUN gem install fpm
 
-# Electron version matching the desktop app
 ENV ELECTRON_VERSION=39.2.7
 ENV DROID_CLI_VERSION=0.157.1
+ENV PACKAGE_TYPE=rpm
 
 WORKDIR /build
 
 COPY build.sh /build/build.sh
 COPY postinst.sh /build/postinst.sh
-RUN chmod +x /build/build.sh /build/postinst.sh
+COPY scripts/ /build/scripts/
+COPY deps/ /build/deps/
+RUN chmod +x /build/build.sh /build/postinst.sh /build/scripts/*.sh
 
 ENTRYPOINT ["/build/build.sh"]

@@ -1,0 +1,36 @@
+FROM centos:7
+
+# CentOS 7 has glibc 2.17 — maximum Linux compatibility for AppImage
+RUN yum install -y epel-release && \
+    yum install -y \
+    nodejs \
+    npm \
+    wget \
+    file \
+    fuse \
+    python3 \
+    curl \
+    git \
+    desktop-file-utils \
+    && yum clean all
+
+ENV ELECTRON_VERSION=39.2.7
+ENV DROID_CLI_VERSION=0.157.1
+ENV PACKAGE_TYPE=appimage
+
+WORKDIR /build
+
+COPY build.sh /build/build.sh
+COPY postinst.sh /build/postinst.sh
+COPY scripts/ /build/scripts/
+COPY deps/ /build/deps/
+RUN chmod +x /build/build.sh /build/postinst.sh /build/scripts/*.sh
+
+# AppImage needs linuxdeploy + appimagetool.
+# Downloaded at build time; install in PATH
+RUN wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$(uname -m).AppImage" \
+    -O /usr/local/bin/linuxdeploy && chmod +x /usr/local/bin/linuxdeploy && \
+    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-$(uname -m).AppImage" \
+    -O /usr/local/bin/appimagetool && chmod +x /usr/local/bin/appimagetool
+
+ENTRYPOINT ["/build/build.sh"]

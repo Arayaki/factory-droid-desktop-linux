@@ -1,218 +1,219 @@
 #!/usr/bin/env bash
 set -e
 
+# ============================================================
+# Factory Desktop Linux Build — Multi-Distro
+# ============================================================
+# Environment variables:
+#   PACKAGE_TYPE     : rpm | deb | pacman | appimage  (default: rpm)
+#   TARGET_ARCH      : x86_64 | arm64                 (default: x86_64)
+#   ELECTRON_VERSION : semver                          (default: 39.2.7)
+#   DROID_CLI_VERSION: semver                          (default: 0.157.1)
+#   APP_VERSION      : semver                          (default: 0.114.1)
+# ============================================================
+
 ELECTRON_VERSION="${ELECTRON_VERSION:-39.2.7}"
 DROID_CLI_VERSION="${DROID_CLI_VERSION:-0.157.1}"
-APP_VERSION="0.114.1"
+APP_VERSION="${APP_VERSION:-0.114.1}"
+PACKAGE_TYPE="${PACKAGE_TYPE:-rpm}"
+TARGET_ARCH="${TARGET_ARCH:-x86_64}"
+
 OUTPUT_DIR="/output"
 PKG_DIR="/build/pkg"
+SCRIPTS_DIR="/build/scripts"
+DEPS_DIR="/build/deps"
+
 OPT_DIR="${PKG_DIR}/opt/factory-desktop"
-RESOURCES_DIR="${OPT_DIR}/resources"
-BIN_DIR="${RESOURCES_DIR}/bin"
-APPS_DIR="${PKG_DIR}/usr/share/applications"
-ICONS_DIR="${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
-BIN_LINK_DIR="${PKG_DIR}/usr/bin"
-ELECTRON_CACHE_DIR="/tmp/electron-cache"
 
 echo "=== Factory Desktop Linux Build ==="
-echo "Electron: v${ELECTRON_VERSION}"
-echo "Droid CLI: v${DROID_CLI_VERSION}"
-echo "App: v${APP_VERSION}"
+echo "Package:    ${PACKAGE_TYPE}"
+echo "Arch:       ${TARGET_ARCH}"
+echo "Electron:   v${ELECTRON_VERSION}"
+echo "Droid CLI:  v${DROID_CLI_VERSION}"
+echo "App:        v${APP_VERSION}"
 
-rm -rf "${PKG_DIR}" "${ELECTRON_CACHE_DIR}"
-mkdir -p "${OPT_DIR}" "${BIN_DIR}" "${APPS_DIR}" "${ICONS_DIR}" "${BIN_LINK_DIR}" "${OUTPUT_DIR}" "${ELECTRON_CACHE_DIR}"
-
-# --------------------------------------------------
-# 1. Install and extract Electron for Linux via npm
-# --------------------------------------------------
-echo "[1/5] Installing Electron v${ELECTRON_VERSION} for Linux..."
-
-cd /tmp
-npm init -y > /dev/null 2>&1
-npm install "electron@${ELECTRON_VERSION}" --prefix /tmp/electron-install 2>&1 | tail -3
-
-ELECTRON_DIST="/tmp/electron-install/node_modules/electron/dist"
-
-if [ ! -f "${ELECTRON_DIST}/electron" ]; then
-    echo "ERROR: Electron binary not found at ${ELECTRON_DIST}/electron"
-    ls -la "${ELECTRON_DIST}/" || true
-    exit 1
-fi
-
-cp "${ELECTRON_DIST}/electron" "${OPT_DIR}/factory-desktop"
-chmod 755 "${OPT_DIR}/factory-desktop"
-
-for f in chrome_100_percent.pak chrome_200_percent.pak icudtl.dat resources.pak snapshot_blob.bin v8_context_snapshot.bin; do
-    if [ -f "${ELECTRON_DIST}/${f}" ]; then
-        cp "${ELECTRON_DIST}/${f}" "${OPT_DIR}/"
-    fi
-done
-
-for f in libEGL.so libGLESv2.so libffmpeg.so libvk_swiftshader.so; do
-    if [ -f "${ELECTRON_DIST}/${f}" ]; then
-        cp "${ELECTRON_DIST}/${f}" "${OPT_DIR}/"
-    fi
-done
-
-if [ -d "${ELECTRON_DIST}/locales" ]; then
-    cp -r "${ELECTRON_DIST}/locales" "${OPT_DIR}/"
-fi
-
-echo "  Electron v${ELECTRON_VERSION} files copied"
+rm -rf "${PKG_DIR}"
+mkdir -p "${PKG_DIR}" "${OUTPUT_DIR}"
 
 # --------------------------------------------------
-# 2. Download Droid CLI for Linux
+# 1. Download Electron
 # --------------------------------------------------
-echo "[2/5] Downloading Droid CLI v${DROID_CLI_VERSION}..."
-
-DROID_URL="https://downloads.factory.ai/factory-cli/releases/${DROID_CLI_VERSION}/linux/x64/droid"
-SHA_URL="${DROID_URL}.sha256"
-
-curl -fsSL -o "${BIN_DIR}/droid" "${DROID_URL}"
-chmod 755 "${BIN_DIR}/droid"
-
-curl -fsSL -o /tmp/droid.sha256 "${SHA_URL}"
-EXPECTED_SHA=$(awk '{print $1}' /tmp/droid.sha256)
-ACTUAL_SHA=$(sha256sum "${BIN_DIR}/droid" | awk '{print $1}')
-
-if [ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]; then
-    echo "  WARNING: Checksum mismatch!"
-    echo "  Expected: ${EXPECTED_SHA}"
-    echo "  Got:      ${ACTUAL_SHA}"
-else
-    echo "  Checksum verified OK"
-fi
-
-echo "  Droid CLI v${DROID_CLI_VERSION} installed"
+echo "[1/5] Downloading Electron..."
+"${SCRIPTS_DIR}/download-electron.sh" "${ELECTRON_VERSION}" "${TARGET_ARCH}" "${OPT_DIR}"
 
 # --------------------------------------------------
-# 3. Copy app.asar from build context
+# 2. Download Droid CLI
+# --------------------------------------------------
+echo "[2/5] Downloading Droid CLI..."
+"${SCRIPTS_DIR}/download-droid.sh" "${DROID_CLI_VERSION}" "${TARGET_ARCH}" "${OPT_DIR}/resources/bin"
+
+# --------------------------------------------------
+# 3. Install app.asar
 # --------------------------------------------------
 echo "[3/5] Installing app.asar..."
-
-ASAR_SRC="/build/input/app.asar"
-if [ -f "${ASAR_SRC}" ]; then
-    cp "${ASAR_SRC}" "${RESOURCES_DIR}/app.asar"
-    echo "  app.asar installed (size: $(du -h ${ASAR_SRC} | cut -f1))"
-else
-    echo "  ERROR: app.asar not found at ${ASAR_SRC}"
-    exit 1
-fi
+"${SCRIPTS_DIR}/install-app-asar.sh" "/build/input/app.asar" "${OPT_DIR}/resources"
 
 # --------------------------------------------------
-# 4. Create desktop integration
+# 4. Desktop integration
 # --------------------------------------------------
 echo "[4/5] Creating desktop integration..."
-
-cat > "${APPS_DIR}/factory-desktop.desktop" << 'DESKTOPEOF'
-[Desktop Entry]
-Name=Factory
-Comment=AI Software Engineering Agent
-GenericName=AI Development Agent
-Exec=/opt/factory-desktop/factory-desktop %U
-Icon=factory-desktop
-Terminal=false
-Type=Application
-Categories=Development;IDE;
-StartupWMClass=factory-desktop
-MimeType=x-scheme-handler/factory;
-Keywords=AI;Development;Coding;Agent;Factory;Droid;
-DESKTOPEOF
-
-cat > "${BIN_LINK_DIR}/factory-desktop" << 'LAUNCHEREOF'
-#!/usr/bin/env bash
-exec /opt/factory-desktop/factory-desktop "$@"
-LAUNCHEREOF
-chmod 755 "${BIN_LINK_DIR}/factory-desktop"
-
-# Create PNG icon using Python
-python3 -c "
-import struct, zlib
-
-def create_png(width, height, r, g, b):
-    def chunk(ct, data):
-        c = ct + data
-        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
-    h = b'\x89PNG\r\n\x1a\n'
-    ihdr = chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
-    raw = b''
-    for y in range(height):
-        raw += b'\x00'
-        for x in range(width):
-            raw += bytes([r, g, b])
-    return h + ihdr + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
-
-png = create_png(256, 256, 100, 80, 220)
-with open('${ICONS_DIR}/factory-desktop.png', 'wb') as f:
-    f.write(png)
-"
-
-# Generate SVG icon for better scaling
-cat > "${ICONS_DIR}/factory-desktop.svg" << 'SVGEOF'
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="48" fill="#6450DC"/>
-  <text x="128" y="160" text-anchor="middle" font-family="sans-serif" font-size="120" font-weight="bold" fill="white">F</text>
-</svg>
-SVGEOF
-
-echo "  Desktop integration done"
+"${SCRIPTS_DIR}/create-desktop-files.sh"
 
 # --------------------------------------------------
-# 5. Build RPM
+# 5. Package
 # --------------------------------------------------
-echo "[5/5] Building RPM with fpm..."
+echo "[5/5] Building ${PACKAGE_TYPE} package..."
+
+# Map architecture for fpm naming
+case "${TARGET_ARCH}" in
+    x86_64) FPM_ARCH="x86_64" ; DEB_ARCH="amd64" ;;
+    arm64)  FPM_ARCH="aarch64" ; DEB_ARCH="arm64" ;;
+    *) echo "ERROR: Unsupported architecture: ${TARGET_ARCH}"; exit 1 ;;
+esac
 
 cd /build
 
-fpm \
-    -s dir \
-    -t rpm \
-    -n factory-desktop \
-    -v "${APP_VERSION}" \
-    --iteration 1 \
-    --architecture x86_64 \
-    --description "Factory Droid Desktop - AI Software Engineering Agent" \
-    --url "https://factory.ai" \
-    --maintainer "The San Francisco AI Factory, Inc. <engineering@factory.ai>" \
-    --vendor "Factory AI" \
-    --license "Proprietary" \
-    --depends "xdg-utils" \
-    --depends "libstdc++" \
-    --depends "libX11" \
-    --depends "libXcomposite" \
-    --depends "libXdamage" \
-    --depends "libXext" \
-    --depends "libXfixes" \
-    --depends "libXrandr" \
-    --depends "libxcb" \
-    --depends "libxkbcommon" \
-    --depends "libdrm" \
-    --depends "mesa-libgbm" \
-    --depends "nss" \
-    --depends "nspr" \
-    --depends "alsa-lib" \
-    --depends "atk" \
-    --depends "at-spi2-atk" \
-    --depends "cups-libs" \
-    --depends "gtk3" \
-    --depends "pango" \
-    --depends "cairo" \
-    --depends "dbus-libs" \
-    --depends "expat" \
-    --depends "gdk-pixbuf2" \
-    --depends "glibc >= 2.28" \
-    --depends "glib2" \
-    --depends "libuuid" \
-    --depends "libnotify" \
-    --depends "libsecret" \
-    --rpm-os linux \
-    --after-install /build/postinst.sh \
-    -C "${PKG_DIR}" \
-    --package "${OUTPUT_DIR}/factory-desktop-${APP_VERSION}-1.fc43.x86_64.rpm" \
-    opt usr
+# Common fpm arguments (shared by rpm, deb, pacman)
+fpm_common() {
+    echo -n \
+        -s dir \
+        -n factory-desktop \
+        -v "${APP_VERSION}" \
+        --iteration 1 \
+        --description "Factory Droid Desktop - AI Software Engineering Agent" \
+        --url "https://factory.ai" \
+        --maintainer "The San Francisco AI Factory, Inc. <engineering@factory.ai>" \
+        --vendor "Factory AI" \
+        --license "Proprietary" \
+        -C "${PKG_DIR}" \
+        opt usr
+}
+
+# Read dependencies from deps file, convert to --depends args
+read_deps() {
+    local deps_file="$1"
+    local args=""
+    if [ -f "${deps_file}" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line=$(echo "$line" | sed 's/#.*//' | xargs)
+            [ -z "$line" ] && continue
+            args="${args} --depends \"${line}\""
+        done < "${deps_file}"
+    fi
+    echo "$args"
+}
+
+# Build output filename
+output_name() {
+    case "${PACKAGE_TYPE}" in
+        rpm)
+            echo "${OUTPUT_DIR}/factory-desktop-${APP_VERSION}-1.${TARGET_ARCH}.rpm"
+            ;;
+        deb)
+            echo "${OUTPUT_DIR}/factory-desktop_${APP_VERSION}-1_${DEB_ARCH}.deb"
+            ;;
+        pacman)
+            echo "${OUTPUT_DIR}/factory-desktop-${APP_VERSION}-1-${TARGET_ARCH}.pkg.tar.zst"
+            ;;
+        appimage)
+            echo "${OUTPUT_DIR}/Factory-Desktop-${APP_VERSION}-${TARGET_ARCH}.AppImage"
+            ;;
+    esac
+}
+
+OUTPUT_FILE=$(output_name)
+
+case "${PACKAGE_TYPE}" in
+    rpm)
+        DEPS_ARGS=$(read_deps "${DEPS_DIR}/fedora.txt")
+        eval fpm \
+            $(fpm_common) \
+            -t rpm \
+            --architecture "${FPM_ARCH}" \
+            --rpm-os linux \
+            --after-install /build/postinst.sh \
+            ${DEPS_ARGS} \
+            --package "${OUTPUT_FILE}"
+        ;;
+    deb)
+        DEPS_ARGS=$(read_deps "${DEPS_DIR}/debian.txt")
+        eval fpm \
+            $(fpm_common) \
+            -t deb \
+            --architecture "${DEB_ARCH}" \
+            --after-install /build/postinst.sh \
+            ${DEPS_ARGS} \
+            --package "${OUTPUT_FILE}"
+        ;;
+    pacman)
+        DEPS_ARGS=$(read_deps "${DEPS_DIR}/arch.txt")
+        eval fpm \
+            $(fpm_common) \
+            -t pacman \
+            --architecture "${FPM_ARCH}" \
+            --after-install /build/postinst.sh \
+            ${DEPS_ARGS} \
+            --package "${OUTPUT_FILE}"
+        ;;
+    appimage)
+        echo "  Building AppImage..."
+
+        APPDIR="/build/AppDir"
+        rm -rf "${APPDIR}"
+        mkdir -p "${APPDIR}"
+
+        # Copy entire PKG_DIR tree into AppDir
+        cp -a "${PKG_DIR}"/. "${APPDIR}/"
+
+        # --------------------------------------------------
+        # Create AppRun entry point
+        # --------------------------------------------------
+        cat > "${APPDIR}/AppRun" << 'APPRUNEOF'
+#!/usr/bin/env bash
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "${HERE}/opt/factory-desktop/factory-desktop" "$@"
+APPRUNEOF
+        chmod +x "${APPDIR}/AppRun"
+
+        # --------------------------------------------------
+        # Copy .desktop file and icon to AppDir root
+        # --------------------------------------------------
+        cp "${PKG_DIR}/usr/share/applications/factory-desktop.desktop" "${APPDIR}/"
+        cp "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps/factory-desktop.png" "${APPDIR}/"
+
+        # --------------------------------------------------
+        # Bundle dependencies with linuxdeploy
+        # --------------------------------------------------
+        if command -v linuxdeploy &>/dev/null; then
+            echo "  Running linuxdeploy..."
+            linuxdeploy \
+                --appdir "${APPDIR}" \
+                --desktop-file "${APPDIR}/factory-desktop.desktop" \
+                --icon-file "${APPDIR}/factory-desktop.png" \
+                2>&1 | tail -5
+        else
+            echo "  WARNING: linuxdeploy not found, skipping library bundling"
+        fi
+
+        # --------------------------------------------------
+        # Create AppImage with appimagetool
+        # --------------------------------------------------
+        if command -v appimagetool &>/dev/null; then
+            echo "  Running appimagetool..."
+            ARCH="${TARGET_ARCH}" appimagetool "${APPDIR}" "${OUTPUT_FILE}" 2>&1 | tail -5
+        else
+            echo "  WARNING: appimagetool not found"
+            echo "  AppDir ready at ${APPDIR} — package manually with:"
+            echo "    appimagetool ${APPDIR} ${OUTPUT_FILE}"
+        fi
+        ;;
+    *)
+        echo "ERROR: Unsupported PACKAGE_TYPE: ${PACKAGE_TYPE}"
+        echo "  Valid: rpm, deb, pacman, appimage"
+        exit 1
+        ;;
+esac
 
 echo ""
 echo "=== Build Complete ==="
 ls -lh "${OUTPUT_DIR}/"
-
-rpm -qpi "${OUTPUT_DIR}/"*.rpm 2>/dev/null || true

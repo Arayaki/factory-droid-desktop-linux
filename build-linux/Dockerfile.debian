@@ -1,0 +1,30 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
+    ruby \
+    ruby-dev \
+    gcc \
+    make \
+    curl \
+    git \
+    desktop-file-utils \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN gem install fpm
+
+ENV ELECTRON_VERSION=39.2.7
+ENV DROID_CLI_VERSION=0.157.1
+ENV PACKAGE_TYPE=deb
+
+WORKDIR /build
+
+COPY build.sh /build/build.sh
+COPY postinst.sh /build/postinst.sh
+COPY scripts/ /build/scripts/
+COPY deps/ /build/deps/
+RUN chmod +x /build/build.sh /build/postinst.sh /build/scripts/*.sh
+
+ENTRYPOINT ["/build/build.sh"]
