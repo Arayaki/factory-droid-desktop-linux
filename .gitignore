@@ -1,0 +1,31 @@
+# Factory Desktop Linux RPM Builder
+# Build scripts for packaging Factory Droid Desktop as RPM for Fedora 43+
+
+# Large binary files (not to be committed)
+*.exe
+*.rar
+*.nupkg
+*.zip
+*.7z
+
+# Built output
+build-linux/output-rpm/
+build-linux/output/
+
+# ASAR (proprietary, downloaded separately)
+build-linux/input/app.asar
+
+# Extracted app contents
+app-extracted/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Docker
+*.tar
