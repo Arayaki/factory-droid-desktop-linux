@@ -4,21 +4,15 @@ Build Factory Droid Desktop as an RPM package for Fedora 43+ GNOME.
 
 Factory Droid Desktop is the official Electron-based desktop application for [Factory](https://factory.ai) - an AI software engineering agent. This project provides Docker-based build scripts to package it for Fedora Linux.
 
-## Prerequisites
-
-- Docker
-- The `app.asar` file from a Factory Desktop installation (place in `build-linux/input/app.asar`)
-
 ## Quick Start
 
-```bash
-# 1. Place app.asar in the input directory
-cp /path/to/app.asar build-linux/input/app.asar
+The `app.asar` file is already included in this repo (`build-linux/input/app.asar`).
 
-# 2. Build the Docker image
+```bash
+# 1. Build the Docker image
 docker build -t factory-desktop-builder build-linux/
 
-# 3. Build the RPM
+# 2. Build the RPM
 docker run --rm \
   -v "$(pwd)/build-linux/input:/build/input" \
   -v "$(pwd)/build-linux/output-rpm:/output" \
@@ -54,6 +48,37 @@ The build script (`build.sh`) runs inside a Fedora 43 Docker container and:
 3. Copies the app.asar (cross-platform Electron app)
 4. Creates desktop integration files (.desktop, icons, launcher)
 5. Packages everything as RPM using `fpm`
+
+## How to Obtain app.asar
+
+The `app.asar` is already included in this repo. If you need to obtain it yourself:
+
+### Option A: From Windows Factory Desktop installation
+
+1. Download and install Factory Desktop on Windows from [factory.ai](https://factory.ai)
+2. Navigate to the installation directory (typically `%LOCALAPPDATA%\Factory\`)
+3. Find `app.asar` inside the `resources` folder
+4. Copy it to `build-linux/input/app.asar`
+
+### Option B: From the Windows installer (.exe)
+
+1. Download `Factory-0.114.1 Setup.exe` from [factory.ai](https://factory.ai)
+2. Extract the installer with 7-Zip:
+   ```bash
+   7z x "Factory-0.114.1 Setup.exe"
+   ```
+3. Navigate to `Factory-0.114.1-full/lib/net45/resources/`
+4. Copy `app.asar` to `build-linux/input/app.asar`
+
+### Option C: From a NuGet package (.nupkg)
+
+1. Download `Factory-0.114.1-full.nupkg` from Factory's releases
+2. The `.nupkg` is a ZIP file - extract it:
+   ```bash
+   unzip Factory-0.114.1-full.nupkg -d factory-extracted
+   ```
+3. Navigate to `factory-extracted/lib/net45/resources/`
+4. Copy `app.asar` to `build-linux/input/app.asar`
 
 ## License
 

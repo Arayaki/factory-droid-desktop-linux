@@ -12,8 +12,8 @@
 build-linux/output-rpm/
 build-linux/output/
 
-# ASAR (proprietary, downloaded separately)
-build-linux/input/app.asar
+# ASAR is included in the repo for convenience (32MB).
+# If you need to obtain it yourself, see README.md for instructions.
 
 # Extracted app contents
 app-extracted/
